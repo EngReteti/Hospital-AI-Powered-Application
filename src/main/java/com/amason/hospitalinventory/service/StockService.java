@@ -75,4 +75,23 @@ public class StockService {
 
         return stock;
     }
+/**
+     * Decides what STATUS a new movement should start with, before it's saved.
+     * This is the actual enforcement of our two rules:
+     *   1. ADJUSTMENT always needs approval first
+     *   2. ANY movement on a controlled substance needs approval first,
+     *      even a normal IN or DISPENSED
+     * Everything else is safe to apply immediately (DIRECT).
+     */
+    public MovementStatus determineInitialStatus(MovementType type, boolean isControlledSubstance) {
+        
+        boolean requiresApproval = 
+            type == MovementType.ADJUSTMENT || isControlledSubstance;
+
+        if (requiresApproval) {
+            return MovementStatus.PENDING;
+        }
+
+        return MovementStatus.DIRECT;
+    }
 }
