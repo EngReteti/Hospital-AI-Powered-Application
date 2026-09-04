@@ -1,5 +1,6 @@
 package com.amason.hospitalinventory.service;
 
+
 import com.amason.hospitalinventory.model.MovementStatus;
 import com.amason.hospitalinventory.model.MovementType;
 import com.amason.hospitalinventory.model.StockMovement;
@@ -7,6 +8,9 @@ import com.amason.hospitalinventory.repository.StockMovementRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.util.List;
+// Added these two imports near the top, with the others
+import com.amason.hospitalinventory.model.Product;
+import com.amason.hospitalinventory.repository.ProductRepository;
 
 // @Service tells Spring: "this class holds business logic, manage it for me"
 // This is different from @Entity (a table) and @Repository-style interfaces 
@@ -18,9 +22,53 @@ public class StockService {
     // StockMovementRepository - I don't need to build it myself"
     @Autowired
     private StockMovementRepository stockMovementRepository;
-
+    @Autowired
+    private ProductRepository productRepository;
     /**
-     * Calculates the current stock level for one product by replaying 
+     * Records a new stock movement - this is the single entry point 
+     * every stock change should go through, so our safety rules are 
+     * always enforced in one place, never bypassed.
+     */
+    public StockMovement recordMovement(StockMovement movement) {
+
+        // Step 1: figure out if this product is a controlled substance,
+        // so we know whether approval is required
+        Product product = movement.getProduct();
+        boolean isControlled = product.getIsControlledSubstance();
+
+        // Step 2: decide the correct starting status using the rule 
+        // we just wrote above
+        MovementStatus status = determineInitialStatus(movement.getType(), isControlled);
+        movement.setStatus(status);
+
+        // Step 3: SAFETY CHECK - if this movement would immediately reduce 
+        // stock (and isn't waiting for approval), make sure it won't push 
+        // stock below zero. This is what actually prevents "selling" more 
+        // than physically exists
+        boolean isReduction = 
+            movement.getType() == MovementType.DISPENSED ||
+            movement.getType() == MovementType.TRANSFER ||
+            movement.getType() == MovementType.DAMAGE ||
+            movement.getType() == MovementType.EXPIRED;
+
+        if (isReduction && status == MovementStatus.DIRECT) {
+            int currentStock = calculateCurrentStock(product.getId());
+
+            if (currentStock < movement.getQuantity()) {
+                // We stop here and refuse to save - throwing an exception 
+                // is how Java signals "this operation cannot continue"
+                throw new IllegalStateException(
+                    "Cannot record movement: only " + currentStock + 
+                    " units available, but " + movement.getQuantity() + " requested."
+                );
+            }
+        }
+
+        // Step 4: everything checked out
+        return stockMovementRepository.save(movement);
+    }/**
+     
+* Calculates the current stock level for one product by replaying 
      * its entire movement history - this is the formula we designed 
      * on paper, now turned into real code.
      *
