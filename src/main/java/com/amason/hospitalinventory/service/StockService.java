@@ -68,9 +68,7 @@ public class StockService {
         return stockMovementRepository.save(movement);
     }/**
      
-* Calculates the current stock level for one product by replaying 
-     * its entire movement history - this is the formula we designed 
-     * on paper, now turned into real code.
+* Calculates the current stock level for one product 
      *
      * current_stock = 
      *     SUM(IN, DIRECT) 
