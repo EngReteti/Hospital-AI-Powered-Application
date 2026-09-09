@@ -12,6 +12,9 @@ import java.util.List;
 import com.amason.hospitalinventory.model.Product;
 import com.amason.hospitalinventory.repository.ProductRepository;
 
+import com.amason.hospitalinventory.model.User;
+import com.amason.hospitalinventory.repository.UserRepository;
+
 // @Service tells Spring: "this class holds business logic, manage it for me"
 // This is different from @Entity (a table) and @Repository-style interfaces 
 // (data access) - this is where actual DECISIONS get made
@@ -24,6 +27,8 @@ public class StockService {
     private StockMovementRepository stockMovementRepository;
     @Autowired
     private ProductRepository productRepository;
+    @Autowired
+    private UserRepository userRepository;
     /**
      * Records a new stock movement - this is the single entry point 
      * every stock change should go through, so our safety rules are 
@@ -31,9 +36,18 @@ public class StockService {
      */
     public StockMovement recordMovement(StockMovement movement) {
 
-        // Step 1: figure out if this product is a controlled substance,
-        // so we know whether approval is required
-        Product product = movement.getProduct();
+        // Step 1: re-fetch the FULL product and user from the database,
+        // instead of trusting the incomplete {id: X} objects Jackson 
+        // built from the incoming request - this ensures every field 
+        // is real and complete, not null, in what we save and return
+        Product product = productRepository.findById(movement.getProduct().getId())
+            .orElseThrow(() -> new RuntimeException("Product not found"));
+        movement.setProduct(product);
+
+        User performedBy = userRepository.findById(movement.getPerformedBy().getId())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+        movement.setPerformedBy(performedBy);
+
         boolean isControlled = product.getIsControlledSubstance();
 
         // Step 2: decide the correct starting status using the rule 
